@@ -1,0 +1,33 @@
+services:
+  app:
+    image: telegram-download-bot:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      APP_CONFIG_PATH: /app/config/app.yaml
+      DATABASE_URL: file:/app/data/app.db
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CONSOLE_PASSWORD: ${CONSOLE_PASSWORD:-}
+      CONSOLE_SESSION_TTL_DAYS: ${CONSOLE_SESSION_TTL_DAYS:-30}
+      CONSOLE_COOKIE_SECURE: ${CONSOLE_COOKIE_SECURE:-0}
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./downloads:/app/downloads
+      - ./storage/sessions:/app/storage/sessions
+      - ./storage/tmp:/app/storage/tmp
+      - ./log:/app/log
+      - ${HOME}/.config/rclone:/root/.config/rclone
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

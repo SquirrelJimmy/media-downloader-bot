@@ -1,0 +1,81 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Next.js / Node build output
+.next/
+out/
+dist/
+build/
+.vercel/
+.turbo/
+.cache/
+coverage/
+.nyc_output/
+.eslintcache
+*.tsbuildinfo
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+config/app.yaml
+config/*.local.yaml
+config/*.local.yml
+
+# Runtime data
+data/*
+!data/
+!data/.gitkeep
+downloads/*
+!downloads/
+!downloads/.gitkeep
+log/*
+!log/
+!log/.gitkeep
+storage/tmp/*
+storage/sessions/*
+!storage/
+!storage/tmp/
+!storage/sessions/
+!storage/**/.gitkeep
+
+# Databases, logs, and Telegram sessions
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+*.session
+*.session-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+
+# Legacy source project
+telegram_media_downloader/

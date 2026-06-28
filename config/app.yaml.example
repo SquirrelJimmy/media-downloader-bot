@@ -1,0 +1,115 @@
+app:
+  name: 媒体下载器
+  language: ZH
+
+bot:
+  download_filter: []
+
+telegram:
+  api_id: 0
+  api_hash: ""
+  bot_token: ""
+  allowed_user_ids: []
+  sessions_dir: storage/sessions
+  user_session: media_downloader.session
+  phone: ""
+
+chats:
+  - chat_id: telegram_chat_id
+    chat_title: ""
+    enabled: true
+    last_read_message_id: 0
+    ids_to_retry: []
+    download_filter: ""
+    upload_telegram_chat_id: ""
+    limit: 100
+    reverse: true
+
+storage:
+  save_path: downloads
+  temp_path: storage/tmp
+  media_types:
+    - audio
+    - document
+    - photo
+    - video
+    - voice
+    - video_note
+    - animation
+  file_formats:
+    audio: []
+    document: []
+    video: []
+  file_path_prefix:
+    - chat_title
+    - media_datetime
+    - media_type
+  file_name_prefix:
+    - message_id
+    - file_name
+  file_name_prefix_split: " - "
+  date_format: "%Y_%m"
+
+download:
+  hide_file_name: false
+  drop_no_audio_video: false
+
+forward:
+  limit_per_minute: 33
+  delete_after_upload: true
+  filter_advertisement_list: []
+  replace_advertisement_list: []
+  group_add_advertisement: {}
+
+queue:
+  adapter: sqlite
+  max_download_tasks: 5
+  max_concurrent_transmissions: 25
+  redis_url: ""
+
+plugins:
+  telegram:
+    enabled: true
+  telegram_text:
+    enabled: false
+    priority: 2
+  ytdlp:
+    enabled: true
+    priority: 1.5
+    path: ./data/bin/yt-dlp_macos
+    options:
+      format: "bestvideo*+bestaudio/best"
+      no_playlist: true
+      merge_output_format: ""
+      proxy: ""
+      cookies: ""
+      cookies_from_browser: ""
+      user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+      referer: ""
+      rate_limit: ""
+      retries: 0
+      fragment_retries: 0
+      concurrent_fragments: 0
+      extra_args: []
+    sites:
+      youtube:
+        proxy: ""
+      bilibili:
+        proxy: ""
+  http:
+    enabled: true
+    priority: 1.75
+    max_file_size: 5368709120
+
+pipeline:
+  cloud_upload:
+    enabled: false
+    adapter: rclone
+    remote_dir: ""
+    rclone_path: rclone
+    before_upload_file_zip: false
+    delete_after_upload: false
+  telegram_forward:
+    enabled: false
+    target_chat_id: ""
+  delete_after_upload: false
