@@ -319,4 +319,21 @@ export type YtdlpBinaryStatus = {
   error?: string;
 };
 
+export type TelegramLoginResponse = {
+  loginId?: string;
+  state: "code_sent" | "password_required" | "completed";
+  phone?: string;
+  expiresAt?: string;
+  codeType?: string;
+  codeLength?: number;
+  timeout?: number;
+  passwordHint?: string | null;
+  user?: {
+    id?: string;
+    displayName?: string;
+  };
+  sessionPath?: string;
+  error?: string;
+};
+
 export type ConsoleViewKey = "dashboard" | "tasks" | "plugins" | "settings";

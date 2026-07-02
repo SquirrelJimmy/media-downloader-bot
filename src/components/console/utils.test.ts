@@ -3,9 +3,11 @@ import {
   isSupportedCloudAdapter,
   mergePluginConfig,
   mergeSettingsConfig,
+  mergeTelegramSettingsConfig,
   settingsFormValues,
   validateCloudSettings,
   validateTelegramForwardSettings,
+  validateTelegramLoginSettings,
 } from "@/components/console/utils";
 import { defaultYtdlpUserAgent } from "@/config/schema";
 import type { AppConfigPayload, PluginFormValues } from "@/types/console";
@@ -229,6 +231,48 @@ describe("console config utils", () => {
 
     expect(config.telegram.api_hash).toBe("");
     expect(config.telegram.bot_token).toBe("");
+  });
+
+  it("merges only telegram form values for login preparation", () => {
+    const values = {
+      ...settingsFormValues(baseConfig),
+      telegramApiId: 54321,
+      telegramApiHash: " api-hash ",
+      telegramBotToken: " bot-token ",
+      telegramAllowedUserIds: ["42"],
+      telegramSessionsDir: "storage/custom-sessions",
+      telegramUserSession: "custom.session",
+      telegramPhone: "+10000000000",
+      savePath: "should-not-change",
+    };
+
+    const config = mergeTelegramSettingsConfig(baseConfig, values);
+
+    expect(config.telegram).toMatchObject({
+      api_id: 54321,
+      api_hash: "api-hash",
+      bot_token: "bot-token",
+      allowed_user_ids: [42],
+      sessions_dir: "storage/custom-sessions",
+      user_session: "custom.session",
+      phone: "+10000000000",
+    });
+    expect(config.storage.save_path).toBe(baseConfig.storage.save_path);
+  });
+
+  it("validates telegram login settings before sending a code", () => {
+    const emptyValues = settingsFormValues(baseConfig);
+    expect(validateTelegramLoginSettings(emptyValues)).toContain("请先配置 Telegram api_id");
+
+    const configuredValues = {
+      ...emptyValues,
+      telegramApiId: 12345,
+      telegramApiHash: "api-hash",
+      telegramSessionsDir: "storage/sessions",
+      telegramUserSession: "user.session",
+      telegramPhone: "+10000000000",
+    };
+    expect(validateTelegramLoginSettings(configuredValues)).toEqual([]);
   });
 
   it("merges cloud upload and pipeline settings into config", () => {

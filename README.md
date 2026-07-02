@@ -105,11 +105,11 @@ $HOME/.config/rclone -> /root/.config/rclone
 
 如果复用已有 `config/app.yaml`，需要确认下载目录、临时目录、session 目录和
 yt-dlp 路径是容器内路径，例如 `/app/downloads`、`/app/storage/tmp`、
-`/app/storage/sessions`、`/app/data/bin/yt-dlp_linux`。交互登录可通过：
+`/app/storage/sessions`、`/app/data/bin/yt-dlp_linux`。
 
-```bash
-docker compose run --rm app npm run telegram:login
-```
+首次使用推荐直接进入控制台：在“配置 > Telegram 配置”填写 `api_id`、
+`api_hash`、手机号和 session 路径，点击“登录 Telegram”完成验证码登录。
+Docker 镜像不依赖源码 CLI，也不需要进入容器执行交互命令。
 
 ## Telegram 用户会话
 
@@ -122,19 +122,17 @@ telegram:
   api_hash: your_api_hash
   sessions_dir: storage/sessions
   user_session: media_downloader.session
-  phone: "+10000000000" # 可选；为空时 CLI 会提示输入
+  phone: "+10000000000"
 ```
 
-首次使用前执行一次交互式登录：
-
-```bash
-npm run telegram:login
-```
+首次使用前在控制台“配置 > Telegram 配置”点击“登录 Telegram”，按弹窗输入
+验证码；如果账号启用了二步验证，继续输入二步验证密码。源码本地开发仍保留
+`npm run telegram:login` 作为备用调试命令。
 
 生成 mtcute SQLite session 文件后，服务端即可读取并下载 Telegram 消息。
 Pyrogram 的 `.session` 文件虽然也是 SQLite，但数据结构不同，不能作为有效的
 mtcute session 使用。如果 `/api/status` 提示 session 警告，请执行一次
-`npm run telegram:login`。
+控制台 Telegram 登录。
 
 ```bash
 curl -X POST http://localhost:3000/api/telegram/messages \

@@ -9,12 +9,14 @@ import type {
 } from "@/types/console";
 import { fetchJson, redirectToLoginForAuthError } from "@/components/console/http";
 import {
+  mergeTelegramSettingsConfig,
   mergePluginConfig,
   mergeSettingsConfig,
   pluginFormValues,
   settingsFormValues,
   validateCloudSettings,
   validateTelegramForwardSettings,
+  validateTelegramLoginSettings,
 } from "@/components/console/utils";
 
 type ConfigFormScope = "all" | "plugins" | "settings";
@@ -112,6 +114,29 @@ export function useConfigData(options: { formScope?: ConfigFormScope } = {}) {
     await saveConfig(mergeSettingsConfig(currentConfig, values));
   }, [config, loadConfig, message, saveConfig, settingsForm]);
 
+  const saveTelegramSettings = useCallback(async () => {
+    const currentConfig = config ?? await loadConfig();
+    if (!currentConfig) {
+      return null;
+    }
+    await settingsForm.validateFields([
+      "telegramApiId",
+      "telegramApiHash",
+      "telegramBotToken",
+      "telegramAllowedUserIds",
+      "telegramSessionsDir",
+      "telegramUserSession",
+      "telegramPhone",
+    ]);
+    const values = settingsForm.getFieldsValue(true);
+    const validationErrors = validateTelegramLoginSettings(values);
+    if (validationErrors.length > 0) {
+      message.error(validationErrors[0]);
+      return null;
+    }
+    return await saveConfig(mergeTelegramSettingsConfig(currentConfig, values));
+  }, [config, loadConfig, message, saveConfig, settingsForm]);
+
   return {
     config,
     pluginForm,
@@ -121,5 +146,6 @@ export function useConfigData(options: { formScope?: ConfigFormScope } = {}) {
     loadConfig,
     savePluginSettings,
     saveRuntimeSettings,
+    saveTelegramSettings,
   };
 }

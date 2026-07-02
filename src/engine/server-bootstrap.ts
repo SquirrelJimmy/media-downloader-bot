@@ -13,6 +13,8 @@ interface ServerBootstrapState {
   listenForwardStarted: boolean;
   workerAbortController?: AbortController;
   listenForwardAbortController?: AbortController;
+  workerPromise?: Promise<void>;
+  listenForwardPromise?: Promise<void>;
   lastError?: string;
   botError?: string;
   workerError?: string;
@@ -58,7 +60,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function retrySqliteBusy<T>(operation: () => Promise<T>, label: string, attempts = 5) {
+async function retrySqliteBusy<T>(operation: () => Promise<T>, label: string, attempts = 30) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -68,7 +70,7 @@ async function retrySqliteBusy<T>(operation: () => Promise<T>, label: string, at
       if (!isSqliteBusyError(error) || attempt === attempts) {
         throw error;
       }
-      const delayMs = Math.min(1000, attempt * 200);
+      const delayMs = Math.min(2000, attempt * 250);
       logger.warn({ error, attempt, attempts, delayMs }, `${label} retrying because sqlite is busy`);
       await sleep(delayMs);
     }
@@ -78,6 +80,22 @@ async function retrySqliteBusy<T>(operation: () => Promise<T>, label: string, at
 
 function shouldSkipBootstrap() {
   return process.env.NEXT_RUNTIME === "edge" || process.env.NEXT_PHASE === "phase-production-build";
+}
+
+async function waitForRuntimeLoopStop(promise: Promise<void> | undefined, label: string) {
+  if (!promise) {
+    return;
+  }
+  let timedOut = false;
+  await Promise.race([
+    promise.catch(() => undefined),
+    sleep(5000).then(() => {
+      timedOut = true;
+    }),
+  ]);
+  if (timedOut) {
+    logger.warn({ label }, "runtime loop did not stop before restart timeout");
+  }
 }
 
 export function getServerBootstrapStatus() {
@@ -123,11 +141,16 @@ export function startServerRuntime() {
       bootstrapState.workerAbortController = workerAbortController;
       bootstrapState.workerStarted = true;
       bootstrapState.workerError = undefined;
-      void runWorker({ abortSignal: workerAbortController.signal }).catch((error) => {
-        bootstrapState.workerStarted = false;
-        bootstrapState.workerError = errorMessage(error);
-        logger.error({ error }, "download worker auto-start failed");
-      });
+      bootstrapState.workerPromise = runWorker({ abortSignal: workerAbortController.signal })
+        .catch((error) => {
+          if (workerAbortController.signal.aborted) {
+            return;
+          }
+          bootstrapState.workerStarted = false;
+          bootstrapState.workerError = errorMessage(error);
+          bootstrapState.workerPromise = undefined;
+          logger.error({ error }, "download worker auto-start failed");
+        });
       logger.info("download worker auto-started with Next server runtime");
     }
 
@@ -136,11 +159,16 @@ export function startServerRuntime() {
       bootstrapState.listenForwardAbortController = listenForwardAbortController;
       bootstrapState.listenForwardStarted = true;
       bootstrapState.listenForwardError = undefined;
-      void runListenForwardLoop({ abortSignal: listenForwardAbortController.signal }).catch((error) => {
-        bootstrapState.listenForwardStarted = false;
-        bootstrapState.listenForwardError = errorMessage(error);
-        logger.error({ error }, "listen_forward auto-start failed");
-      });
+      bootstrapState.listenForwardPromise = runListenForwardLoop({ abortSignal: listenForwardAbortController.signal })
+        .catch((error) => {
+          if (listenForwardAbortController.signal.aborted) {
+            return;
+          }
+          bootstrapState.listenForwardStarted = false;
+          bootstrapState.listenForwardError = errorMessage(error);
+          bootstrapState.listenForwardPromise = undefined;
+          logger.error({ error }, "listen_forward auto-start failed");
+        });
       logger.info("listen_forward loop auto-started with Next server runtime");
     }
 
@@ -193,8 +221,14 @@ export async function restartServerRuntime() {
 
   bootstrapState.workerAbortController?.abort(new Error("runtime restart"));
   bootstrapState.listenForwardAbortController?.abort(new Error("runtime restart"));
+  await Promise.all([
+    waitForRuntimeLoopStop(bootstrapState.workerPromise, "worker"),
+    waitForRuntimeLoopStop(bootstrapState.listenForwardPromise, "listen_forward"),
+  ]);
   bootstrapState.workerAbortController = undefined;
   bootstrapState.listenForwardAbortController = undefined;
+  bootstrapState.workerPromise = undefined;
+  bootstrapState.listenForwardPromise = undefined;
   bootstrapState.workerStarted = false;
   bootstrapState.listenForwardStarted = false;
   bootstrapState.workerError = undefined;

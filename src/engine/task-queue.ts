@@ -1,4 +1,4 @@
-import { libsqlClient } from "@/db/client";
+import { libsqlClient, retrySqliteBusy } from "@/db/client";
 import type { NormalizedMessage, TaskNode } from "@/types/download";
 import { updateRuntimeStatus } from "@/engine/runtime-state";
 import { logger } from "@/utils/logger";
@@ -117,6 +117,8 @@ function errorMessage(error: unknown) {
 }
 
 export class SqliteTaskQueue implements TaskQueue {
+  private nextExpiredLockCleanupAt = 0;
+
   async enqueue(job: DownloadJob) {
     const timestamp = nowIso();
 
@@ -354,24 +356,15 @@ export class SqliteTaskQueue implements TaskQueue {
     const lockedUntil = futureIso(lockMs);
     let transaction: Awaited<ReturnType<typeof libsqlClient.transaction>> | undefined;
 
-    try {
-      transaction = await libsqlClient.transaction("write");
-      await transaction.execute({
-        sql: `
-          UPDATE task_queue
-          SET
-            status = 'queued',
-            locked_by = NULL,
-            locked_until = NULL,
-            updated_at = ?
-          WHERE status = 'running'
-            AND locked_until IS NOT NULL
-            AND locked_until <= ?
-        `,
-        args: [timestamp, timestamp],
-      });
+    await this.releaseExpiredLocksIfDue(timestamp).catch((error) => {
+      if (!isSqliteBusyError(error)) {
+        throw error;
+      }
+      logger.warn({ workerId }, "expired lock cleanup skipped because sqlite is busy");
+    });
 
-      const selected = await transaction.execute({
+    const selected = await retrySqliteBusy(() =>
+      libsqlClient.execute({
         sql: `
           SELECT id, job_id, payload, attempts
           FROM task_queue
@@ -381,13 +374,15 @@ export class SqliteTaskQueue implements TaskQueue {
           LIMIT 1
         `,
         args: [timestamp],
-      });
-      const row = selected.rows.at(0) as QueueRow | undefined;
+      }),
+    );
+    const row = selected.rows.at(0) as QueueRow | undefined;
+    if (!row) {
+      return null;
+    }
 
-      if (!row) {
-        await transaction.commit();
-        return null;
-      }
+    try {
+      transaction = await libsqlClient.transaction("write");
 
       const claimed = await transaction.execute({
         sql: `
@@ -460,6 +455,30 @@ export class SqliteTaskQueue implements TaskQueue {
     });
     const attempts = Number(result.rows.at(0)?.attempts ?? 1);
     return Math.min(300, Math.max(5, attempts * attempts * 5));
+  }
+
+  private async releaseExpiredLocksIfDue(timestamp: string) {
+    const now = Date.now();
+    if (now < this.nextExpiredLockCleanupAt) {
+      return;
+    }
+    this.nextExpiredLockCleanupAt = now + 30_000;
+    await retrySqliteBusy(() =>
+      libsqlClient.execute({
+        sql: `
+          UPDATE task_queue
+          SET
+            status = 'queued',
+            locked_by = NULL,
+            locked_until = NULL,
+            updated_at = ?
+          WHERE status = 'running'
+            AND locked_until IS NOT NULL
+            AND locked_until <= ?
+        `,
+        args: [timestamp, timestamp],
+      }),
+    );
   }
 }
 

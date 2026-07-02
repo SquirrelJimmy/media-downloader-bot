@@ -1,4 +1,4 @@
-import { libsqlClient } from "@/db/client";
+import { configureDatabaseRuntime, libsqlClient, retrySqliteBusy } from "@/db/client";
 
 const tableStatements = [
   `CREATE TABLE IF NOT EXISTS tasks (
@@ -195,30 +195,49 @@ const listenForwardColumns = [
 ];
 
 async function ensureColumns(tableName: string, columns: Array<{ name: string; type: string }>) {
-  const info = await libsqlClient.execute(`PRAGMA table_info(${tableName})`);
+  const info = await retrySqliteBusy(() => libsqlClient.execute(`PRAGMA table_info(${tableName})`));
   const existing = new Set(info.rows.map((row) => String(row.name)));
 
   for (const column of columns) {
     if (!existing.has(column.name)) {
-      await libsqlClient.execute(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.type}`);
+      await retrySqliteBusy(() =>
+        libsqlClient.execute(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.type}`),
+      );
     }
   }
 }
 
 async function backfillMigratedTimestamps() {
-  await libsqlClient.execute("UPDATE downloads SET download_date = datetime('now') WHERE download_date IS NULL");
-  await libsqlClient.execute("UPDATE tasks SET start_time = datetime('now') WHERE start_time IS NULL");
-  await libsqlClient.execute("UPDATE task_queue SET available_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE available_at IS NULL");
-  await libsqlClient.execute("UPDATE task_queue SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE created_at IS NULL");
-  await libsqlClient.execute("UPDATE task_queue SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL");
-  await libsqlClient.execute("UPDATE chat_progress SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL");
-  await libsqlClient.execute("UPDATE listen_forward_rules SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE created_at IS NULL");
-  await libsqlClient.execute("UPDATE listen_forward_rules SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL");
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE downloads SET download_date = datetime('now') WHERE download_date IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE tasks SET start_time = datetime('now') WHERE start_time IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE task_queue SET available_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE available_at IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE task_queue SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE created_at IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE task_queue SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE chat_progress SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE listen_forward_rules SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE created_at IS NULL"),
+  );
+  await retrySqliteBusy(() =>
+    libsqlClient.execute("UPDATE listen_forward_rules SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL"),
+  );
 }
 
 export async function migrate() {
+  await configureDatabaseRuntime();
   for (const statement of tableStatements) {
-    await libsqlClient.execute(statement);
+    await retrySqliteBusy(() => libsqlClient.execute(statement));
   }
   await ensureColumns("downloads", downloadColumns);
   await ensureColumns("tasks", taskColumns);
@@ -227,7 +246,7 @@ export async function migrate() {
   await ensureColumns("listen_forward_rules", listenForwardColumns);
   await backfillMigratedTimestamps();
   for (const statement of postColumnStatements) {
-    await libsqlClient.execute(statement);
+    await retrySqliteBusy(() => libsqlClient.execute(statement));
   }
 }
 

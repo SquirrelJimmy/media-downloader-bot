@@ -85,6 +85,26 @@ export function validateTelegramForwardSettings(values: SettingsFormValues) {
   return normalizeOptionalString(values.telegramForwardTargetChatId).trim() ? [] : ["启用 Telegram 转发时需要填写转发目标"];
 }
 
+export function validateTelegramLoginSettings(values: SettingsFormValues) {
+  const errors: string[] = [];
+  if (!normalizeNonnegativeInteger(values.telegramApiId)) {
+    errors.push("请先配置 Telegram api_id");
+  }
+  if (!normalizeOptionalString(values.telegramApiHash).trim()) {
+    errors.push("请先配置 Telegram api_hash");
+  }
+  if (!normalizeOptionalString(values.telegramSessionsDir).trim()) {
+    errors.push("请先配置 Telegram sessions_dir");
+  }
+  if (!normalizeOptionalString(values.telegramUserSession).trim()) {
+    errors.push("请先配置 Telegram user_session");
+  }
+  if (!normalizeOptionalString(values.telegramPhone).trim()) {
+    errors.push("请先配置 Telegram 手机号");
+  }
+  return errors;
+}
+
 export function taskCounterValue(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -314,6 +334,22 @@ export function mergeSettingsConfig(config: AppConfigPayload, values: SettingsFo
         enabled: values.telegramForwardEnabled,
         target_chat_id: values.telegramForwardTargetChatId,
       },
+    },
+  };
+}
+
+export function mergeTelegramSettingsConfig(config: AppConfigPayload, values: SettingsFormValues): AppConfigPayload {
+  return {
+    ...config,
+    telegram: {
+      ...config.telegram,
+      api_id: normalizeNonnegativeInteger(values.telegramApiId),
+      api_hash: normalizeOptionalString(values.telegramApiHash).trim(),
+      bot_token: normalizeOptionalString(values.telegramBotToken).trim(),
+      allowed_user_ids: normalizeAllowedUserIds(values.telegramAllowedUserIds),
+      sessions_dir: normalizeOptionalString(values.telegramSessionsDir),
+      user_session: normalizeOptionalString(values.telegramUserSession),
+      phone: normalizeOptionalString(values.telegramPhone),
     },
   };
 }

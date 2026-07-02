@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJson, redirectToLoginForAuthError } from "@/components/console/http";
 import { useConfigData } from "@/components/console/hooks/use-config-data";
 import { useConsoleRuntime } from "@/components/console/runtime-provider";
+import { TelegramLoginModal } from "@/components/console/telegram-login-modal";
+import type { TelegramLoginResponse } from "@/types/console";
 import {
   cloudAdapterOptions,
   fileNamePrefixOptions,
@@ -25,11 +27,14 @@ export function SettingsPage() {
     configSaving,
     loadConfig,
     saveRuntimeSettings,
+    saveTelegramSettings,
   } = useConfigData({ formScope: "settings" });
   const [runtimeRestarting, setRuntimeRestarting] = useState(false);
+  const [telegramLoginOpen, setTelegramLoginOpen] = useState(false);
   const cloudUploadEnabled = Boolean(Form.useWatch("cloudUploadEnabled", settingsForm));
   const cloudUploadAdapter = Form.useWatch("cloudUploadAdapter", settingsForm);
   const telegramForwardEnabled = Boolean(Form.useWatch("telegramForwardEnabled", settingsForm));
+  const telegramPhone = Form.useWatch("telegramPhone", settingsForm);
   const cloudAdapterUnsupported = Boolean(cloudUploadAdapter && !isSupportedCloudAdapter(cloudUploadAdapter));
 
   useEffect(() => {
@@ -54,8 +59,49 @@ export function SettingsPage() {
     }
   }, [loadConfig, message, refreshRuntime]);
 
+  const saveTelegramBeforeLogin = useCallback(
+    async (phone: string) => {
+      settingsForm.setFieldValue("telegramPhone", phone);
+      const saved = await saveTelegramSettings();
+      return Boolean(saved);
+    },
+    [saveTelegramSettings, settingsForm],
+  );
+
+  const handleTelegramLoginCompleted = useCallback(
+    async (result: TelegramLoginResponse) => {
+      message.success(
+        result.user?.displayName ? `Telegram 已登录：${result.user.displayName}` : "Telegram 登录完成",
+      );
+      await restartRuntimeServices();
+    },
+    [message, restartRuntimeServices],
+  );
+
   const settingsActions = (
     <Space>
+      <Button loading={runtimeRestarting} disabled={false} onClick={() => void restartRuntimeServices()}>
+        重启相关服务
+      </Button>
+      <Button icon={<ReloadOutlined />} loading={configLoading} disabled={false} onClick={() => void loadConfig()}>
+        重新加载
+      </Button>
+      <Button
+        type="primary"
+        loading={configSaving}
+        disabled={!config || configLoading}
+        onClick={() => void saveRuntimeSettings()}
+      >
+        保存配置
+      </Button>
+    </Space>
+  );
+
+  const telegramActions = (
+    <Space>
+      <Button disabled={!config || configLoading || configSaving} onClick={() => setTelegramLoginOpen(true)}>
+        登录 Telegram
+      </Button>
       <Button loading={runtimeRestarting} disabled={false} onClick={() => void restartRuntimeServices()}>
         重启相关服务
       </Button>
@@ -77,7 +123,7 @@ export function SettingsPage() {
     <>
       <Form component={false} form={settingsForm} layout="vertical" disabled={!config || configSaving}>
         <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
-          <Card title="Telegram 配置" extra={settingsActions} loading={configLoading && !config}>
+          <Card title="Telegram 配置" extra={telegramActions} loading={configLoading && !config}>
             <section className="settings-grid">
               <Form.Item name="telegramApiId" label="api_id" rules={[{ required: true, message: "请输入 api_id" }]}>
                 <InputNumber min={0} precision={0} style={{ width: "100%" }} />
@@ -309,6 +355,13 @@ export function SettingsPage() {
           </Card>
         </Space>
       </Form>
+      <TelegramLoginModal
+        open={telegramLoginOpen}
+        initialPhone={typeof telegramPhone === "string" ? telegramPhone : ""}
+        onClose={() => setTelegramLoginOpen(false)}
+        onBeforeStart={saveTelegramBeforeLogin}
+        onCompleted={handleTelegramLoginCompleted}
+      />
     </>
   );
 }
