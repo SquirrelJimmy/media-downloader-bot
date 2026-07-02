@@ -248,7 +248,7 @@ export async function resolveAllowedUserIdsForBot(
 ) {
   const ensureUserClient = input.ensureUserClient ?? ensureStartedUserClient;
   const warn = input.warn;
-  const includeCurrentUser = input.includeCurrentUser ?? true;
+  const includeCurrentUser = input.includeCurrentUser ?? false;
   const allowedUserIds = new Set<string>();
   for (const configured of config.telegram.allowed_user_ids) {
     const staticId = staticAllowedUserId(configured);

@@ -93,10 +93,14 @@ describe("server bootstrap", () => {
       })),
     }));
     const stopBotClient = vi.fn(async () => undefined);
+    const destroyUserClient = vi.fn(async () => undefined);
     vi.doMock("@/engine/bot-client", () => ({
       ensureStartedBotClient: vi.fn(async () => undefined),
       isBotClientReadyForConfig: vi.fn(() => false),
       stopBotClient,
+    }));
+    vi.doMock("@/engine/user-client", () => ({
+      destroyUserClient,
     }));
     const workerSignals: AbortSignal[] = [];
     const listenSignals: AbortSignal[] = [];
@@ -130,6 +134,7 @@ describe("server bootstrap", () => {
     });
 
     expect(stopBotClient).toHaveBeenCalledTimes(1);
+    expect(destroyUserClient).toHaveBeenCalledTimes(1);
     expect(oldWorkerSignal?.aborted).toBe(true);
     expect(oldListenSignal?.aborted).toBe(true);
     expect(workerSignals).toHaveLength(2);

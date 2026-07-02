@@ -2,6 +2,7 @@ import { loadAppConfig } from "@/config/load";
 import { migrate } from "@/db/migrate";
 import { ensureStartedBotClient, isBotClientReadyForConfig, stopBotClient } from "@/engine/bot-client";
 import { runListenForwardLoop } from "@/engine/listen-forward";
+import { destroyUserClient } from "@/engine/user-client";
 import { runWorker } from "@/engine/worker";
 import { logger } from "@/utils/logger";
 
@@ -216,6 +217,9 @@ export async function restartServerRuntime() {
 
   await bootstrapState.promise?.catch(() => undefined);
   await stopBotClient();
+  await destroyUserClient().catch((error) => {
+    logger.warn({ error }, "failed to destroy user client during runtime restart");
+  });
   bootstrapState.botStarted = false;
   bootstrapState.botError = undefined;
 

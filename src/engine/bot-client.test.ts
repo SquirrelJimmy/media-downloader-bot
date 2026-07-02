@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   botCommandDefinitions,
   botClientConfigKey,
@@ -174,11 +174,31 @@ describe("bot permissions", () => {
     expect(isAllowedSenderId(new Set(["42"]), undefined)).toBe(false);
   });
 
-  it("keeps numeric allowed users when the user session cannot be started", async () => {
+  it("uses numeric allowed users without starting the user session", async () => {
+    const ensureUserClient = vi.fn(async () => {
+      throw new Error("session should not be used");
+    });
     const result = await resolveAllowedUserIdsForBot(
       parseAppConfig({
         telegram: {
           allowed_user_ids: [42, "84"],
+        },
+      }),
+      {
+        ensureUserClient,
+      },
+    );
+
+    expect(result.resolvedUserClient).toBe(true);
+    expect(result.allowedUserIds).toEqual(new Set(["42", "84"]));
+    expect(ensureUserClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps numeric allowed users when username resolution cannot start the user session", async () => {
+    const result = await resolveAllowedUserIdsForBot(
+      parseAppConfig({
+        telegram: {
+          allowed_user_ids: [42, "alice"],
         },
       }),
       {
@@ -189,10 +209,10 @@ describe("bot permissions", () => {
     );
 
     expect(result.resolvedUserClient).toBe(false);
-    expect(result.allowedUserIds).toEqual(new Set(["42", "84"]));
+    expect(result.allowedUserIds).toEqual(new Set(["42"]));
   });
 
-  it("resolves username allowlist entries and the current user when the session is healthy", async () => {
+  it("resolves username allowlist entries when the session is healthy", async () => {
     const result = await resolveAllowedUserIdsForBot(
       parseAppConfig({
         telegram: {
@@ -209,7 +229,7 @@ describe("bot permissions", () => {
     );
 
     expect(result.resolvedUserClient).toBe(true);
-    expect(result.allowedUserIds).toEqual(new Set(["1001", "1002"]));
+    expect(result.allowedUserIds).toEqual(new Set(["1001"]));
   });
 });
 

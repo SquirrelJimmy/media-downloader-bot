@@ -101,13 +101,16 @@ function sessionErrorMessage(error: unknown) {
 
 async function resetFailedUserClient(client?: TelegramUserClient | null) {
   const current = client ?? userClient;
-  if (current) {
-    await current.destroy().catch(() => undefined);
+  try {
+    if (current) {
+      await current.destroy().catch(() => undefined);
+    }
+  } finally {
+    if (!client || userClient === client) {
+      userClient = null;
+    }
+    userClientStarted = false;
   }
-  if (!client || userClient === client) {
-    userClient = null;
-  }
-  userClientStarted = false;
 }
 
 export async function ensureStartedUserClient(config: AppConfig): Promise<TelegramUserClient> {
@@ -269,13 +272,15 @@ export async function getUserClientStatus(config: AppConfig): Promise<TelegramCl
 }
 
 export async function destroyUserClient() {
-  if (!userClient) {
+  const current = userClient;
+  userClient = null;
+  userClientStartPromise = null;
+  userClientStarted = false;
+  if (!current) {
     userClientStarted = false;
     return;
   }
-  await userClient.destroy();
-  userClient = null;
-  userClientStarted = false;
+  await current.destroy();
 }
 
 export function __setUserClientFactoryForTest(factory: ((config: AppConfig) => TelegramUserClient) | null) {
