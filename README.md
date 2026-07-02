@@ -60,6 +60,16 @@ npm run start:lan
 docker compose up -d --build
 ```
 
+也可以在 GitHub Actions 手动运行 `Docker Image` 工作流发布多架构镜像到
+GHCR。默认 tag 为 `latest`，镜像地址为：
+
+```bash
+docker pull ghcr.io/<owner>/<repo>:latest
+```
+
+如果希望 compose 使用远端镜像，可将 `docker-compose.yml` 中的 `image`
+临时改为对应 GHCR 地址，或在部署环境另写覆盖文件。
+
 本地开发和生产模式都需要设置控制台密码。可以在 `.env` 中配置：
 
 ```dotenv
