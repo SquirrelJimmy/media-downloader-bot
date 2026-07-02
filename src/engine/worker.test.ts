@@ -249,7 +249,7 @@ describe("worker", () => {
     vi.doUnmock("@/plugins");
   });
 
-  it("records failed downloads when Telegram message hydration fails", async () => {
+  it("records failed downloads when downloadable Telegram message hydration fails", async () => {
     vi.resetModules();
     tempDir = await mkdtemp(join(tmpdir(), "telegram-download-worker-hydrate-failed-"));
     process.env.DATABASE_URL = `file:${join(tempDir, "test.db")}`;
@@ -280,6 +280,7 @@ describe("worker", () => {
       message: {
         ...message(),
         media: undefined,
+        mediaType: "photo",
         source: {
           kind: "mtcute",
           chatId: "-1001",
@@ -300,6 +301,64 @@ describe("worker", () => {
     );
     expect(tasks.rows.at(0)?.failed_count).toBe(1);
     vi.doUnmock("@/engine/user-client");
+  });
+
+  it("does not hydrate external URL jobs from Telegram session", async () => {
+    vi.resetModules();
+    tempDir = await mkdtemp(join(tmpdir(), "telegram-download-worker-external-"));
+    process.env.DATABASE_URL = `file:${join(tempDir, "test.db")}`;
+    vi.doMock("@/config/load", async () => {
+      const { parseAppConfig } = await import("@/config/schema");
+      return {
+        loadAppConfig: async () => parseAppConfig({}),
+        saveAppConfig: vi.fn(),
+      };
+    });
+    const getTelegramMessage = vi.fn(async () => {
+      throw new Error("should not hydrate external URL");
+    });
+    vi.doMock("@/engine/user-client", () => ({
+      getTelegramMessage,
+      ensureStartedUserClient: vi.fn(),
+    }));
+    vi.doMock("@/plugins", () => ({
+      registerBuiltinPlugins: () => ({
+        download: vi.fn(async () => ({
+          status: "success" as const,
+          fileName: "video.mp4",
+          filePath: "downloads/video.mp4",
+          fileSize: 10,
+        })),
+      }),
+    }));
+
+    const migrateModule = await import("@/db/migrate");
+    const serviceModule = await import("@/engine/task-service");
+    const workerModule = await import("@/engine/worker");
+    await migrateModule.migrate();
+    const task = { ...node(), id: "task-external-url", filter: undefined };
+    await serviceModule.persistTaskNode(task);
+
+    const result = await workerModule.processJob({
+      id: "job-external-url",
+      message: {
+        ...message(),
+        media: undefined,
+        mediaType: "external",
+        text: "https://www.youtube.com/watch?v=test",
+        source: {
+          kind: "mtcute",
+          chatId: "-1001",
+          messageId: 9,
+        },
+      },
+      node: task,
+    });
+
+    expect(result.status).toBe("success");
+    expect(getTelegramMessage).not.toHaveBeenCalled();
+    vi.doUnmock("@/engine/user-client");
+    vi.doUnmock("@/plugins");
   });
 
   it("starts one dequeue loop per configured download worker", async () => {

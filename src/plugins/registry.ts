@@ -48,6 +48,11 @@ export class PluginRegistry {
         }
       } catch (error) {
         logger.error({ error, plugin: plugin.name }, "download plugin failed");
+        return {
+          status: "failed",
+          error: error instanceof Error ? error : new Error(String(error)),
+          pluginName: plugin.name,
+        };
       }
     }
     return { status: "skip" };

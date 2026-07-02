@@ -8,8 +8,10 @@ import {
   externalDownloadUrl,
   formatBotStatusText,
   isAllowedSenderId,
+  messageExternalDownloadUrl,
   parseDownloadCommandArgs,
   parseForwardCommandArgs,
+  resolveAllowedUserIdsForBot,
 } from "@/engine/bot-client";
 import { parseAppConfig } from "@/config/schema";
 
@@ -18,6 +20,22 @@ describe("bot command parsing", () => {
     expect(externalDownloadUrl("https://www.youtube.com/watch?v=abc")).toBe("https://www.youtube.com/watch?v=abc");
     expect(externalDownloadUrl("https://t.me/c/1492447836/456")).toBeUndefined();
     expect(externalDownloadUrl("看这个 https://telegram.me/example/12")).toBeUndefined();
+  });
+
+  it("extracts external URLs from Telegram webpage previews", () => {
+    expect(
+      messageExternalDownloadUrl(
+        {
+          media: {
+            type: "webpage",
+            preview: {
+              url: "https://www.youtube.com/watch?v=preview",
+            },
+          },
+        } as never,
+        "preview title",
+      ),
+    ).toBe("https://www.youtube.com/watch?v=preview");
   });
 
   it("parses /download range from a private chat message link", () => {
@@ -154,6 +172,44 @@ describe("bot permissions", () => {
     expect(isAllowedSenderId(new Set(["42"]), "42")).toBe(true);
     expect(isAllowedSenderId(new Set(["42"]), "43")).toBe(false);
     expect(isAllowedSenderId(new Set(["42"]), undefined)).toBe(false);
+  });
+
+  it("keeps numeric allowed users when the user session cannot be started", async () => {
+    const result = await resolveAllowedUserIdsForBot(
+      parseAppConfig({
+        telegram: {
+          allowed_user_ids: [42, "84"],
+        },
+      }),
+      {
+        ensureUserClient: async () => {
+          throw new Error("session file may be corrupted");
+        },
+      },
+    );
+
+    expect(result.resolvedUserClient).toBe(false);
+    expect(result.allowedUserIds).toEqual(new Set(["42", "84"]));
+  });
+
+  it("resolves username allowlist entries and the current user when the session is healthy", async () => {
+    const result = await resolveAllowedUserIdsForBot(
+      parseAppConfig({
+        telegram: {
+          allowed_user_ids: ["alice"],
+        },
+      }),
+      {
+        ensureUserClient: async () =>
+          ({
+            getPeer: async () => ({ id: 1001 }),
+            getMe: async () => ({ id: 1002 }),
+          }) as never,
+      },
+    );
+
+    expect(result.resolvedUserClient).toBe(true);
+    expect(result.allowedUserIds).toEqual(new Set(["1001", "1002"]));
   });
 });
 

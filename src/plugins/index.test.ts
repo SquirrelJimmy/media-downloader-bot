@@ -143,4 +143,27 @@ describe("builtin plugin order", () => {
       fileName: "391.txt",
     });
   });
+
+  it("returns failed when a selected plugin throws instead of hiding it as skip", async () => {
+    vi.resetModules();
+    vi.doMock("@/plugins/builtin/ytdlp", () => ({
+      ytdlpPlugin: {
+        name: "ytdlp",
+        priority: 1.5,
+        canHandle: vi.fn(async () => true),
+        download: vi.fn(async () => {
+          throw new Error("disk I/O error");
+        }),
+      },
+    }));
+    const { registerBuiltinPlugins } = await import("@/plugins");
+
+    const result = await registerBuiltinPlugins().download(request(), context());
+
+    expect(result).toMatchObject({
+      status: "failed",
+      pluginName: "ytdlp",
+    });
+    expect(result.error?.message).toBe("disk I/O error");
+  });
 });

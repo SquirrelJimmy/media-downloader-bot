@@ -8,15 +8,16 @@ import {
   getConfiguredTelegramFileName,
   getConfiguredTelegramSavePath,
 } from "@/utils/telegram-storage";
+import { isDownloadableTelegramMedia } from "@/utils/telegram-media";
 
 export const telegramPlugin: DownloadPlugin = {
   name: "telegram",
   priority: 1,
   canHandle(req, ctx) {
-    return ctx.config.plugins.telegram.enabled && Boolean(req.message.media);
+    return ctx.config.plugins.telegram.enabled && isDownloadableTelegramMedia(req.message.media);
   },
   async download(req, ctx) {
-    if (!req.message.media) {
+    if (!isDownloadableTelegramMedia(req.message.media)) {
       return { status: "skip" };
     }
 

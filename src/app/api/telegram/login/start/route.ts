@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadAppConfig } from "@/config/load";
+import { destroyUserClient } from "@/engine/user-client";
 import { startTelegramLogin } from "@/engine/telegram-login-service";
 import { requestJson, telegramLoginJsonError } from "../route-utils";
 
@@ -9,6 +10,7 @@ export async function POST(request: Request) {
   try {
     const body = await requestJson(request);
     const config = await loadAppConfig();
+    await destroyUserClient();
     const result = await startTelegramLogin(config, {
       phone: typeof body.phone === "string" ? body.phone : undefined,
     });

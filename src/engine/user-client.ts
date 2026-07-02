@@ -4,8 +4,9 @@ import { isAbsolute, join } from "node:path";
 import { createClient } from "@libsql/client";
 import { TelegramClient, type Message, type MessageMedia } from "@mtcute/node";
 import type { AppConfig } from "@/config/schema";
-import type { MediaType, NormalizedMessage } from "@/types/download";
+import type { NormalizedMessage } from "@/types/download";
 import { sanitizeFileName } from "@/utils/format";
+import { telegramMediaType } from "@/utils/telegram-media";
 
 export type TelegramUserClient = TelegramClient;
 
@@ -26,6 +27,16 @@ export interface TelegramSessionStatus {
   warning?: string;
 }
 
+let userClientFactory: (config: AppConfig) => TelegramUserClient = createUserClient;
+let telegramSessionTableReader: (sessionPath: string) => Promise<string[]> = async (sessionPath) => {
+  const db = createClient({ url: `file:${sessionPath}` });
+  try {
+    const result = await db.execute("select name from sqlite_master where type = 'table' order by name");
+    return result.rows.map((row) => String(row.name));
+  } finally {
+    db.close();
+  }
+};
 let userClient: TelegramUserClient | null = null;
 let userClientStartPromise: Promise<TelegramUserClient> | null = null;
 let userClientStarted = false;
@@ -54,6 +65,51 @@ export function createUserClient(config: AppConfig): TelegramUserClient {
   });
 }
 
+function isSqliteSessionReadError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const record = error as Record<string, unknown>;
+  const code = String(record.code ?? "");
+  const message = String(record.message ?? "");
+  return (
+    code.startsWith("SQLITE_IOERR") ||
+    code === "SQLITE_CORRUPT" ||
+    message.includes("SQLITE_IOERR") ||
+    message.includes("disk I/O error") ||
+    message.includes("database disk image is malformed") ||
+    message.includes("short read")
+  );
+}
+
+function sessionRepairMessage(detail: string) {
+  return `${detail}; session file may be corrupted or unreadable. Back up/delete the session file and log in again from the console.`;
+}
+
+function sessionErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const code = record.code ? `${record.code}: ` : "";
+    const message = record.message ? String(record.message) : String(error);
+    return `${code}${message}`;
+  }
+  return String(error);
+}
+
+async function resetFailedUserClient(client?: TelegramUserClient | null) {
+  const current = client ?? userClient;
+  if (current) {
+    await current.destroy().catch(() => undefined);
+  }
+  if (!client || userClient === client) {
+    userClient = null;
+  }
+  userClientStarted = false;
+}
+
 export async function ensureStartedUserClient(config: AppConfig): Promise<TelegramUserClient> {
   if (userClient && userClientStarted) {
     return userClient;
@@ -65,12 +121,20 @@ export async function ensureStartedUserClient(config: AppConfig): Promise<Telegr
 
   userClientStartPromise = (async () => {
     await mkdir(getUserSessionsDir(config), { recursive: true });
-    await assertUserSessionExists(config);
-    const client = userClient ?? createUserClient(config);
+    await assertUserSessionHealthy(config);
+    const client = userClient ?? userClientFactory(config);
     userClient = client;
-    await client.start({});
-    userClientStarted = true;
-    return client;
+    try {
+      await client.start({});
+      userClientStarted = true;
+      return client;
+    } catch (error) {
+      await resetFailedUserClient(client);
+      if (isSqliteSessionReadError(error)) {
+        throw new Error(sessionRepairMessage(sessionErrorMessage(error)));
+      }
+      throw error;
+    }
   })();
 
   try {
@@ -87,6 +151,24 @@ export async function assertUserSessionExists(config: AppConfig) {
     throw new Error(
       `Telegram user session not found at ${getUserSessionPath(config)}. Create or mount a valid session file first.`,
     );
+  }
+}
+
+export async function assertUserSessionHealthy(config: AppConfig) {
+  await assertUserSessionExists(config);
+  const status = await inspectTelegramSession(config);
+  const sessionPath = getUserSessionPath(config);
+  if (!status.sqlite) {
+    throw new Error(`Telegram user session at ${sessionPath} is not a valid SQLite database. Log in again from the console.`);
+  }
+  if (status.warning && isSessionRepairWarning(status.warning)) {
+    throw new Error(`Telegram user session at ${sessionPath}: ${status.warning}`);
+  }
+  if (status.pyrogramStorage) {
+    throw new Error(`Telegram user session at ${sessionPath} is a Pyrogram session. Log in again from the console to create an mtcute session.`);
+  }
+  if (!status.mtcuteStorage) {
+    throw new Error(`Telegram user session at ${sessionPath} is not an mtcute session. Log in again from the console.`);
   }
 }
 
@@ -139,42 +221,41 @@ export async function inspectTelegramSession(config: AppConfig): Promise<Telegra
   }
 
   try {
-    const db = createClient({ url: `file:${sessionPath}` });
-    try {
-      const result = await db.execute("select name from sqlite_master where type = 'table' order by name");
-      const tables = result.rows.map((row) => String(row.name));
-      const tableSet = new Set(tables);
-      const mtcuteStorage =
-        tableSet.has("mtcute_migrations") && tableSet.has("auth_keys") && tableSet.has("key_value");
-      const pyrogramStorage =
-        tableSet.has("sessions") &&
-        tableSet.has("peers") &&
-        !mtcuteStorage;
-      return {
-        exists: true,
-        sqlite: true,
-        mtcuteStorage,
-        pyrogramStorage,
-        tables,
-        warning: mtcuteStorage
-          ? undefined
-          : pyrogramStorage
-            ? "session looks like a Pyrogram session; mtcute cannot reuse it directly"
-            : "session is SQLite but does not look like mtcute storage",
-      };
-    } finally {
-      db.close();
-    }
+    const tables = await telegramSessionTableReader(sessionPath);
+    const tableSet = new Set(tables);
+    const mtcuteStorage =
+      tableSet.has("mtcute_migrations") && tableSet.has("auth_keys") && tableSet.has("key_value");
+    const pyrogramStorage =
+      tableSet.has("sessions") &&
+      tableSet.has("peers") &&
+      !mtcuteStorage;
+    return {
+      exists: true,
+      sqlite: true,
+      mtcuteStorage,
+      pyrogramStorage,
+      tables,
+      warning: mtcuteStorage
+        ? undefined
+        : pyrogramStorage
+          ? "session looks like a Pyrogram session; mtcute cannot reuse it directly"
+          : "session is SQLite but does not look like mtcute storage",
+    };
   } catch (error) {
+    const detail = sessionErrorMessage(error);
     return {
       exists: true,
       sqlite: true,
       mtcuteStorage: false,
       pyrogramStorage: false,
       tables: [],
-      warning: error instanceof Error ? error.message : String(error),
+      warning: isSqliteSessionReadError(error) ? sessionRepairMessage(detail) : detail,
     };
   }
+}
+
+function isSessionRepairWarning(warning: string) {
+  return warning.includes("session file may be corrupted") || warning.includes("SQLITE_IOERR") || warning.includes("SQLITE_CORRUPT");
 }
 
 export async function getUserClientStatus(config: AppConfig): Promise<TelegramClientStatus> {
@@ -189,11 +270,35 @@ export async function getUserClientStatus(config: AppConfig): Promise<TelegramCl
 
 export async function destroyUserClient() {
   if (!userClient) {
+    userClientStarted = false;
     return;
   }
   await userClient.destroy();
   userClient = null;
   userClientStarted = false;
+}
+
+export function __setUserClientFactoryForTest(factory: ((config: AppConfig) => TelegramUserClient) | null) {
+  userClientFactory = factory ?? createUserClient;
+}
+
+export async function __resetUserClientForTest() {
+  await resetFailedUserClient();
+  userClientStartPromise = null;
+}
+
+export function __setTelegramSessionTableReaderForTest(
+  reader: ((sessionPath: string) => Promise<string[]>) | null,
+) {
+  telegramSessionTableReader = reader ?? (async (sessionPath) => {
+    const db = createClient({ url: `file:${sessionPath}` });
+    try {
+      const result = await db.execute("select name from sqlite_master where type = 'table' order by name");
+      return result.rows.map((row) => String(row.name));
+    } finally {
+      db.close();
+    }
+  });
 }
 
 function peerId(value: unknown): string | undefined {
@@ -218,26 +323,8 @@ function maybeDate(value: unknown) {
   return value instanceof Date ? value.toISOString() : undefined;
 }
 
-function mediaTypeFromMtcute(media: MessageMedia): MediaType | undefined {
-  if (!media) {
-    return undefined;
-  }
-  if (media.type === "video") {
-    return media.isAnimation ? "animation" : media.isRound ? "video_note" : "video";
-  }
-  if (
-    media.type === "audio" ||
-    media.type === "document" ||
-    media.type === "photo" ||
-    media.type === "voice"
-  ) {
-    return media.type;
-  }
-  return "external";
-}
-
-function mediaFileName(message: Message, media: MessageMedia, mediaType?: MediaType): string | undefined {
-  if (!media) {
+function mediaFileName(message: Message, media: MessageMedia, mediaType?: NormalizedMessage["mediaType"]): string | undefined {
+  if (!media || !mediaType) {
     return undefined;
   }
   if ("fileName" in media && typeof media.fileName === "string" && media.fileName) {
@@ -290,19 +377,20 @@ function forwardOrigin(message: Message): NormalizedMessage["forwardOrigin"] {
 
 export function normalizeMtcuteMessage(message: Message, options: { mediaGroupExpectedCount?: number } = {}): NormalizedMessage {
   const media = message.media;
-  const mediaType = mediaTypeFromMtcute(media);
+  const mediaType = telegramMediaType(media);
   const chatId = peerId(message.chat) ?? "unknown";
   const senderId = peerId(message.sender);
   const fileName = mediaFileName(message, media, mediaType);
+  const hasDownloadableMedia = Boolean(mediaType);
 
   return {
     id: message.id,
     chatId,
     chatTitle: peerTitle(message.chat) ?? chatId,
     date: message.date.toISOString(),
-    text: media ? undefined : message.text,
-    caption: media ? message.text : undefined,
-    media,
+    text: hasDownloadableMedia ? undefined : message.text,
+    caption: hasDownloadableMedia ? message.text : undefined,
+    media: hasDownloadableMedia ? media : undefined,
     mediaType,
     mediaGroupId: message.groupedIdUnique ?? undefined,
     mediaGroupExpectedCount: options.mediaGroupExpectedCount,

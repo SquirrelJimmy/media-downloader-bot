@@ -6,6 +6,7 @@ import { createTaskNode, enqueueMessageDownload } from "@/engine/task-service";
 import { filterEngine } from "@/filter/dsl";
 import type { NormalizedMessage } from "@/types/download";
 import { parseTelegramMessageRef } from "@/utils/telegram-link";
+import { isDownloadableTelegramMediaType } from "@/utils/telegram-media";
 import { extractUrls, getHostname } from "@/utils/url";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ function queuedTelegramMessage(
   return {
     ...message,
     media: undefined,
-    source,
+    source: isDownloadableTelegramMediaType(message.mediaType) ? source : undefined,
   };
 }
 

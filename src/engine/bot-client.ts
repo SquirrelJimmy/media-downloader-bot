@@ -22,6 +22,7 @@ import { parseTelegramChatRef, parseTelegramMessageRef, type TelegramChatRef } f
 import { logger } from "@/utils/logger";
 import { createProgressBar, formatByte } from "@/utils/format";
 import { effectiveMessageSourceTitle } from "@/utils/telegram-storage";
+import { isDownloadableTelegramMedia, telegramWebpagePreviewUrl } from "@/utils/telegram-media";
 import { extractUrls, getHostname } from "@/utils/url";
 import type { NormalizedMessage, TaskType } from "@/types/download";
 
@@ -53,6 +54,7 @@ interface BotClientState {
   downloadFilters: string[];
   allowedUserIds: Set<string>;
   allowedUsersConfigKey?: string;
+  allowedUsersResolveWarningKey?: string;
   clientConfigKey?: string;
 }
 
@@ -114,6 +116,7 @@ function resetBotRuntimeState() {
   botState.startupNoticeSent = false;
   botState.allowedUserIds = new Set();
   botState.allowedUsersConfigKey = undefined;
+  botState.allowedUsersResolveWarningKey = undefined;
   botState.clientConfigKey = undefined;
 }
 
@@ -222,6 +225,10 @@ function staticAllowedUserId(value: string | number) {
   return /^-?\d+$/.test(String(value)) ? String(value) : undefined;
 }
 
+function hasDynamicAllowedUserIds(config: AppConfig) {
+  return config.telegram.allowed_user_ids.some((configured) => !staticAllowedUserId(configured));
+}
+
 function peerIdFromResolvedPeer(peer: unknown) {
   if (!peer || typeof peer !== "object") {
     return undefined;
@@ -231,12 +238,17 @@ function peerIdFromResolvedPeer(peer: unknown) {
   return id === undefined ? undefined : String(id);
 }
 
-async function ensureAllowedUserIds(config: AppConfig) {
-  const key = allowedUsersConfigKey(config);
-  if (botState.allowedUsersConfigKey === key) {
-    return botState.allowedUserIds;
-  }
-
+export async function resolveAllowedUserIdsForBot(
+  config: AppConfig,
+  input: {
+    ensureUserClient?: typeof ensureStartedUserClient;
+    warn?: (error: unknown, message: string) => void;
+    includeCurrentUser?: boolean;
+  } = {},
+) {
+  const ensureUserClient = input.ensureUserClient ?? ensureStartedUserClient;
+  const warn = input.warn;
+  const includeCurrentUser = input.includeCurrentUser ?? true;
   const allowedUserIds = new Set<string>();
   for (const configured of config.telegram.allowed_user_ids) {
     const staticId = staticAllowedUserId(configured);
@@ -245,10 +257,12 @@ async function ensureAllowedUserIds(config: AppConfig) {
     }
   }
 
-  let resolvedUserClient = false;
+  if (!includeCurrentUser && !hasDynamicAllowedUserIds(config)) {
+    return { allowedUserIds, resolvedUserClient: true, userClientError: undefined as unknown };
+  }
+
   try {
-    const userClient = await ensureStartedUserClient(config);
-    resolvedUserClient = true;
+    const userClient = await ensureUserClient(config);
     for (const configured of config.telegram.allowed_user_ids) {
       if (staticAllowedUserId(configured)) {
         continue;
@@ -260,19 +274,43 @@ async function ensureAllowedUserIds(config: AppConfig) {
           allowedUserIds.add(id);
         }
       } catch (error) {
-        logger.warn({ error, configured }, "failed to resolve bot allowed user");
+        warn?.(error, "failed to resolve bot allowed user");
       }
     }
 
-    const me = await userClient.getMe();
-    allowedUserIds.add(String(me.id));
+    if (includeCurrentUser) {
+      const me = await userClient.getMe();
+      allowedUserIds.add(String(me.id));
+    }
+    return { allowedUserIds, resolvedUserClient: true, userClientError: undefined as unknown };
   } catch (error) {
-    logger.warn({ error }, "failed to resolve bot admin user");
+    return { allowedUserIds, resolvedUserClient: false, userClientError: error };
+  }
+}
+
+async function ensureAllowedUserIds(config: AppConfig) {
+  const key = allowedUsersConfigKey(config);
+  if (botState.allowedUsersConfigKey === key) {
+    return botState.allowedUserIds;
   }
 
-  botState.allowedUserIds = allowedUserIds;
-  botState.allowedUsersConfigKey = resolvedUserClient ? key : undefined;
-  return allowedUserIds;
+  const resolved = await resolveAllowedUserIdsForBot(config, {
+    warn(error, message) {
+      logger.warn({ error }, message);
+    },
+  });
+
+  if (resolved.userClientError) {
+    const warningKey = `${key}:${resolved.userClientError instanceof Error ? resolved.userClientError.message : String(resolved.userClientError)}`;
+    if (botState.allowedUsersResolveWarningKey !== warningKey) {
+      logger.warn({ error: resolved.userClientError }, "failed to resolve bot admin user; using static allowed_user_ids only");
+      botState.allowedUsersResolveWarningKey = warningKey;
+    }
+  }
+
+  botState.allowedUserIds = resolved.allowedUserIds;
+  botState.allowedUsersConfigKey = key;
+  return resolved.allowedUserIds;
 }
 
 async function isAllowed(config: AppConfig, message: Message) {
@@ -378,7 +416,11 @@ function resolveTaskExternalId(value: string | undefined) {
 }
 
 function hasDownloadableMedia(message: Message) {
-  return Boolean(message.media);
+  return isDownloadableTelegramMedia(message.media);
+}
+
+export function messageExternalDownloadUrl(message: Pick<Message, "media">, text: string) {
+  return externalDownloadUrl(text) ?? externalDownloadUrl(telegramWebpagePreviewUrl(message.media) ?? "");
 }
 
 function currentDownloadFilter(config: AppConfig) {
@@ -1391,7 +1433,7 @@ async function handleBotMessage(config: AppConfig, client: BotClient, message: M
   }
 
   const text = textOf(message);
-  const externalUrl = externalDownloadUrl(text);
+  const externalUrl = messageExternalDownloadUrl(message, text);
 
   try {
     logger.info(

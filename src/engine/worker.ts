@@ -12,6 +12,11 @@ import { markTaskNodeFinished, recordDownloadResult, syncTaskStatusFromQueue } f
 import { isTaskAbortError, registerTaskCancellation } from "@/engine/task-cancellation";
 import { discardPendingMediaGroupsForTask, flushPendingMediaGroupsForTask } from "@/engine/media-group-forwarder";
 import { transmissionLimiter } from "@/engine/transmission-limiter";
+import {
+  isDownloadableTelegramMedia,
+  isDownloadableTelegramMediaType,
+  telegramWebpagePreviewUrl,
+} from "@/utils/telegram-media";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,7 +38,7 @@ async function hydrateJobMessage(job: DownloadJob, config: Awaited<ReturnType<ty
     return job.message;
   }
 
-  if (job.message.source?.kind !== "mtcute") {
+  if (job.message.source?.kind !== "mtcute" || !isDownloadableTelegramMediaType(job.message.mediaType)) {
     return job.message;
   }
 
@@ -99,7 +104,7 @@ export async function processJob(
   const meta = metadataFromMessage(message);
   const userClient =
     options.telegramClient ??
-    (message.source?.kind === "mtcute" || message.media ? await ensureStartedUserClient(config) : undefined);
+    (isDownloadableTelegramMedia(message.media) ? await ensureStartedUserClient(config) : undefined);
 
   if (job.node.filter && !filterEngine.execute(job.node.filter, meta)) {
     const result = { status: "skip" as const, message };
@@ -108,7 +113,7 @@ export async function processJob(
     return result;
   }
 
-  const extractedUrl = extractUrls(message.text ?? message.caption).at(0);
+  const extractedUrl = extractUrls(message.text ?? message.caption).at(0) ?? telegramWebpagePreviewUrl(message.media);
   const abortController = new AbortController();
   const unregisterCancellation = registerTaskCancellation(job.node.id, abortController);
   const abortFromCaller = () => {
