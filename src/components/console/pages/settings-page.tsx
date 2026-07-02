@@ -226,14 +226,14 @@ export function SettingsPage() {
                       <Alert
                         showIcon
                         type="info"
-                        message="当前云盘上传通过 rclone 执行"
+                        title="当前云盘上传通过 rclone 执行"
                         description="请先在运行环境中完成 rclone config，并在远端目录中填写类似 drive:/telegram 的目标路径。系统只执行上传，不负责创建 rclone remote。"
                       />
                       {cloudAdapterUnsupported ? (
                         <Alert
                           showIcon
                           type="warning"
-                          message="当前云盘适配器后端未注册"
+                          title="当前云盘适配器后端未注册"
                           description="aligo、webdav、none 目前仅保留配置兼容；启用云盘上传时请选择 rclone，否则保存会被拦截。"
                         />
                       ) : null}
@@ -334,7 +334,7 @@ export function SettingsPage() {
                       <Alert
                         showIcon
                         type="info"
-                        message="管线策略影响下载完成后的后处理"
+                        title="管线策略影响下载完成后的后处理"
                         description="此处的删除策略用于 Telegram 转发成功后的通用清理；云盘上传成功后的删除请在“云盘上传”Tab 单独配置。"
                       />
                       <section className="settings-grid">

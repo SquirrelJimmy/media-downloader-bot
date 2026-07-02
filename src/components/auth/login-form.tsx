@@ -93,7 +93,7 @@ export function LoginForm({ nextPath, reason }: { nextPath: string; reason?: str
           <Alert
             showIcon
             type="warning"
-            message="控制台密码未配置"
+            title="控制台密码未配置"
             description="请设置环境变量 CONSOLE_PASSWORD 后重启服务。"
             className="login-alert"
           />

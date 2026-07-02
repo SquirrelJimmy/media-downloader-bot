@@ -185,7 +185,7 @@ export function TelegramLoginModal({
             <Alert
               showIcon
               type="info"
-              message="登录会使用当前已保存的 api_id、api_hash 和 session 路径"
+              title="登录会使用当前已保存的 api_id、api_hash 和 session 路径"
               description="发送验证码前会先保存 Telegram 配置；登录成功后 session 会写入配置中的 user_session 文件。"
             />
           ) : null}
@@ -214,7 +214,7 @@ export function TelegramLoginModal({
               <Alert
                 showIcon
                 type="warning"
-                message="当前账号启用了二步验证"
+                title="当前账号启用了二步验证"
                 description={loginMeta?.passwordHint ? `密码提示：${loginMeta.passwordHint}` : "请输入 Telegram 二步验证密码。"}
               />
               <Form.Item name="password" label="二步验证密码" rules={[{ required: true, whitespace: true, message: "请输入二步验证密码" }]}>
@@ -227,7 +227,7 @@ export function TelegramLoginModal({
             <Alert
               showIcon
               type="success"
-              message="Telegram 用户会话已保存"
+              title="Telegram 用户会话已保存"
               description={loginMeta?.sessionPath ? `Session 文件：${loginMeta.sessionPath}` : "服务会重新加载最新配置和 session。"}
             />
           ) : null}
