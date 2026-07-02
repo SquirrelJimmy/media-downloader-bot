@@ -10,7 +10,7 @@
     "start": "next start",
     "start:lan": "next start -H 0.0.0.0",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "tsx src/db/migrate.ts",
     "telegram:login": "tsx src/engine/telegram-login.ts",
