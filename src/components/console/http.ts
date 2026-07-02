@@ -35,7 +35,10 @@ export function redirectToLoginForAuthError(result: Pick<ConsoleFetchResult<unkn
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<ConsoleFetchResult<T>> {
   let response: Response;
   try {
-    response = await fetch(input, init);
+    response = await fetch(input, {
+      ...init,
+      credentials: init?.credentials ?? "same-origin",
+    });
   } catch (error) {
     return {
       ok: false,

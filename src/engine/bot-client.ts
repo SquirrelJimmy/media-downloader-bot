@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { BotKeyboard, TelegramClient, type CallbackQuery, type Message } from "@mtcute/node";
 import type { AppConfig } from "@/config/schema";
 import type { ChatDownloadConfig } from "@/config/schema";
@@ -80,8 +80,16 @@ botState.displayTaskMap ??= {};
 botState.downloadFilters ??= [];
 botState.allowedUserIds ??= new Set();
 
+function runtimePath(path: string) {
+  return isAbsolute(path) ? path : join(/*turbopackIgnore: true*/ process.cwd(), path);
+}
+
+function botSessionsDir(config: AppConfig) {
+  return runtimePath(config.telegram.sessions_dir);
+}
+
 function botSessionPath(config: AppConfig) {
-  return join(config.telegram.sessions_dir, "media_downloader_bot.session");
+  return join(botSessionsDir(config), "media_downloader_bot.session");
 }
 
 export function botClientConfigKey(config: AppConfig) {
@@ -1465,7 +1473,7 @@ export async function ensureStartedBotClient(config: AppConfig): Promise<BotClie
   }
 
   botState.startPromise = (async () => {
-    await mkdir(config.telegram.sessions_dir, { recursive: true });
+    await mkdir(botSessionsDir(config), { recursive: true });
     botState.downloadFilters = config.bot.download_filter;
     botState.clientConfigKey = botClientConfigKey(config);
     const client =

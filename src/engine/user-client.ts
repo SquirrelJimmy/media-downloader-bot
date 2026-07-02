@@ -1,7 +1,7 @@
 import { closeSync, existsSync, openSync, readSync } from "node:fs";
-import { createRequire } from "node:module";
 import { access, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { createClient } from "@libsql/client";
 import { TelegramClient, type Message, type MessageMedia } from "@mtcute/node";
 import type { AppConfig } from "@/config/schema";
 import type { MediaType, NormalizedMessage } from "@/types/download";
@@ -30,10 +30,16 @@ let userClient: TelegramUserClient | null = null;
 let userClientStartPromise: Promise<TelegramUserClient> | null = null;
 let userClientStarted = false;
 
-const require = createRequire(import.meta.url);
+function runtimePath(path: string) {
+  return isAbsolute(path) ? path : join(/*turbopackIgnore: true*/ process.cwd(), path);
+}
 
 export function getUserSessionPath(config: AppConfig) {
-  return join(config.telegram.sessions_dir, config.telegram.user_session);
+  return join(getUserSessionsDir(config), config.telegram.user_session);
+}
+
+function getUserSessionsDir(config: AppConfig) {
+  return runtimePath(config.telegram.sessions_dir);
 }
 
 export function createUserClient(config: AppConfig): TelegramUserClient {
@@ -58,7 +64,7 @@ export async function ensureStartedUserClient(config: AppConfig): Promise<Telegr
   }
 
   userClientStartPromise = (async () => {
-    await mkdir(config.telegram.sessions_dir, { recursive: true });
+    await mkdir(getUserSessionsDir(config), { recursive: true });
     await assertUserSessionExists(config);
     const client = userClient ?? createUserClient(config);
     userClient = client;
@@ -79,13 +85,13 @@ export async function assertUserSessionExists(config: AppConfig) {
     await access(getUserSessionPath(config));
   } catch {
     throw new Error(
-      `Telegram user session not found at ${getUserSessionPath(config)}. Run "npm run telegram:login" first.`,
+      `Telegram user session not found at ${getUserSessionPath(config)}. Create or mount a valid session file first.`,
     );
   }
 }
 
 export async function startInteractiveUserClient(config: AppConfig): Promise<TelegramUserClient> {
-  await mkdir(config.telegram.sessions_dir, { recursive: true });
+  await mkdir(getUserSessionsDir(config), { recursive: true });
   const client = createUserClient(config);
   const self = await client.start({
     phone: config.telegram.phone || (() => client.input("Phone > ")),
@@ -108,7 +114,7 @@ function sqliteHeader(path: string) {
   }
 }
 
-export function inspectTelegramSession(config: AppConfig): TelegramSessionStatus {
+export async function inspectTelegramSession(config: AppConfig): Promise<TelegramSessionStatus> {
   const sessionPath = getUserSessionPath(config);
   if (!existsSync(sessionPath)) {
     return {
@@ -117,7 +123,7 @@ export function inspectTelegramSession(config: AppConfig): TelegramSessionStatus
       mtcuteStorage: false,
       pyrogramStorage: false,
       tables: [],
-      warning: "session file is missing; run npm run telegram:login",
+      warning: "session file is missing; create or mount a valid session file first",
     };
   }
 
@@ -133,19 +139,10 @@ export function inspectTelegramSession(config: AppConfig): TelegramSessionStatus
   }
 
   try {
-    const Database = require("better-sqlite3") as new (
-      path: string,
-      options?: { readonly?: boolean; fileMustExist?: boolean },
-    ) => {
-      prepare(sql: string): { all(): Array<{ name: string }> };
-      close(): void;
-    };
-    const db = new Database(sessionPath, { readonly: true, fileMustExist: true });
+    const db = createClient({ url: `file:${sessionPath}` });
     try {
-      const tables = db
-        .prepare("select name from sqlite_master where type = 'table' order by name")
-        .all()
-        .map((row) => row.name);
+      const result = await db.execute("select name from sqlite_master where type = 'table' order by name");
+      const tables = result.rows.map((row) => String(row.name));
       const tableSet = new Set(tables);
       const mtcuteStorage =
         tableSet.has("mtcute_migrations") && tableSet.has("auth_keys") && tableSet.has("key_value");
@@ -162,8 +159,8 @@ export function inspectTelegramSession(config: AppConfig): TelegramSessionStatus
         warning: mtcuteStorage
           ? undefined
           : pyrogramStorage
-            ? "session looks like a Pyrogram session; mtcute cannot reuse it directly, run npm run telegram:login"
-            : "session is SQLite but does not look like mtcute storage; run npm run telegram:login if startup fails",
+            ? "session looks like a Pyrogram session; mtcute cannot reuse it directly"
+            : "session is SQLite but does not look like mtcute storage",
       };
     } finally {
       db.close();
@@ -180,13 +177,13 @@ export function inspectTelegramSession(config: AppConfig): TelegramSessionStatus
   }
 }
 
-export function getUserClientStatus(config: AppConfig): TelegramClientStatus {
+export async function getUserClientStatus(config: AppConfig): Promise<TelegramClientStatus> {
   return {
     configured: Boolean(config.telegram.api_id && config.telegram.api_hash),
     started: userClientStarted,
     sessionPath: getUserSessionPath(config),
     sessionName: config.telegram.user_session,
-    session: inspectTelegramSession(config),
+    session: await inspectTelegramSession(config),
   };
 }
 

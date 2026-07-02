@@ -144,7 +144,7 @@ describe("telegram session inspection", () => {
   it("detects missing, mtcute and pyrogram session file shapes", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "telegram-session-test-"));
     try {
-      expect(inspectTelegramSession(tempSessionConfig(tempDir, "missing.session"))).toMatchObject({
+      await expect(inspectTelegramSession(tempSessionConfig(tempDir, "missing.session"))).resolves.toMatchObject({
         exists: false,
         mtcuteStorage: false,
       });
@@ -158,7 +158,7 @@ describe("telegram session inspection", () => {
           create table key_value (key text primary key, value blob not null);
         `,
       );
-      expect(inspectTelegramSession(tempSessionConfig(tempDir, "mtcute.session"))).toMatchObject({
+      await expect(inspectTelegramSession(tempSessionConfig(tempDir, "mtcute.session"))).resolves.toMatchObject({
         exists: true,
         sqlite: true,
         mtcuteStorage: true,
@@ -174,7 +174,7 @@ describe("telegram session inspection", () => {
           create table peers (id integer primary key, access_hash integer, type integer);
         `,
       );
-      expect(inspectTelegramSession(tempSessionConfig(tempDir, "pyrogram.session"))).toMatchObject({
+      await expect(inspectTelegramSession(tempSessionConfig(tempDir, "pyrogram.session"))).resolves.toMatchObject({
         exists: true,
         sqlite: true,
         mtcuteStorage: false,
@@ -189,7 +189,7 @@ describe("telegram session inspection", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "telegram-session-test-"));
     try {
       await writeFile(join(tempDir, "bad.session"), "not sqlite", "utf8");
-      expect(inspectTelegramSession(tempSessionConfig(tempDir, "bad.session"))).toMatchObject({
+      await expect(inspectTelegramSession(tempSessionConfig(tempDir, "bad.session"))).resolves.toMatchObject({
         exists: true,
         sqlite: false,
         mtcuteStorage: false,

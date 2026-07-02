@@ -2,8 +2,6 @@
 
 import { LockOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Form, Input, Typography } from "antd";
-import type { Route } from "next";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "@/components/console/http";
 
@@ -19,7 +17,6 @@ function safeNextPath(value: string) {
 }
 
 export function LoginForm({ nextPath, reason }: { nextPath: string; reason?: string }) {
-  const router = useRouter();
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -39,7 +36,7 @@ export function LoginForm({ nextPath, reason }: { nextPath: string; reason?: str
         const session = result.data;
         setAuthConfigured(Boolean(session.configured));
         if (session.authenticated) {
-          router.replace(destination as Route);
+          window.location.replace(destination);
         }
       })
       .catch(() => undefined)
@@ -51,7 +48,14 @@ export function LoginForm({ nextPath, reason }: { nextPath: string; reason?: str
     return () => {
       cancelled = true;
     };
-  }, [destination, router]);
+  }, [destination]);
+
+  const sessionFailureMessage = () => {
+    if (window.location.protocol !== "https:") {
+      return "登录成功但会话未生效。请确认 CONSOLE_COOKIE_SECURE 没有在 HTTP 访问下设置为 1，并确认当前 Next 进程已读取 CONSOLE_PASSWORD。";
+    }
+    return "登录成功但会话未生效。请确认浏览器允许 Cookie，并确认当前 Next 进程已读取 CONSOLE_PASSWORD。";
+  };
 
   const onFinish = async (values: LoginFormValues) => {
     setLoading(true);
@@ -65,7 +69,12 @@ export function LoginForm({ nextPath, reason }: { nextPath: string; reason?: str
         message.error(result.error ?? "登录失败");
         return;
       }
-      router.replace(destination as Route);
+      const session = await fetchJson<{ authenticated?: boolean; configured?: boolean }>("/api/auth/session");
+      if (!session.data?.authenticated) {
+        message.error(sessionFailureMessage());
+        return;
+      }
+      window.location.assign(destination);
     } finally {
       setLoading(false);
     }

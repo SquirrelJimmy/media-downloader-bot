@@ -34,15 +34,15 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg rclone zip tini \
   && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /opt/yt-dlp \
-  && curl -fsSL -o /opt/yt-dlp/yt-dlp_linux https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
-  && curl -fsSL -o /opt/yt-dlp/yt-dlp_linux_aarch64 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64 \
-  && chmod 0755 /opt/yt-dlp/yt-dlp_linux /opt/yt-dlp/yt-dlp_linux_aarch64
-
-COPY --from=builder /app ./
+COPY --from=builder /app/.next/standalone/server.js ./server.js
+COPY --from=builder /app/.next/standalone/package.json ./package.json
+COPY --from=builder /app/.next/standalone/node_modules ./node_modules
+COPY --from=builder /app/.next/standalone/.next ./.next
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/docker ./docker
 RUN chmod 0755 /app/docker/entrypoint.sh
 
 EXPOSE 3000
 
 ENTRYPOINT ["tini", "--", "/app/docker/entrypoint.sh"]
-CMD ["npm", "run", "start:lan"]
+CMD ["node", "server.js"]

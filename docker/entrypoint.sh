@@ -12,8 +12,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-YTDLP_TARGET="/app/data/bin/${YTDLP_ASSET}"
-YTDLP_SEED="/opt/yt-dlp/${YTDLP_ASSET}"
+YTDLP_TARGET="./data/bin/${YTDLP_ASSET}"
 
 mkdir -p \
   "$(dirname "$APP_CONFIG_PATH")" \
@@ -27,13 +26,8 @@ if [ ! -f "$APP_CONFIG_PATH" ]; then
   sed "s#__YTDLP_PATH__#${YTDLP_TARGET}#g" /app/docker/app.yaml.template > "$APP_CONFIG_PATH"
 fi
 
-if [ ! -x "$YTDLP_TARGET" ]; then
-  if [ -f "$YTDLP_SEED" ]; then
-    cp "$YTDLP_SEED" "$YTDLP_TARGET"
-    chmod 0755 "$YTDLP_TARGET"
-  elif [ -f "$YTDLP_TARGET" ]; then
-    chmod 0755 "$YTDLP_TARGET"
-  fi
+if [ -f "$YTDLP_TARGET" ] && [ ! -x "$YTDLP_TARGET" ]; then
+  chmod 0755 "$YTDLP_TARGET"
 fi
 
 exec "$@"

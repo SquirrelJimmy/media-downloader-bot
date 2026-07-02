@@ -14,16 +14,7 @@ telegram:
   user_session: media_downloader.session
   phone: ""
 
-chats:
-  - chat_id: telegram_chat_id
-    chat_title: ""
-    enabled: true
-    last_read_message_id: 0
-    ids_to_retry: []
-    download_filter: ""
-    upload_telegram_chat_id: ""
-    limit: 100
-    reverse: true
+chats: []
 
 storage:
   save_path: /app/downloads

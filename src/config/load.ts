@@ -1,9 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import * as yaml from "js-yaml";
 import { parseAppConfig, type AppConfig } from "@/config/schema";
 
 const defaultConfigPath = process.env.APP_CONFIG_PATH ?? "config/app.yaml";
+
+function runtimeConfigPath(configPath: string) {
+  return isAbsolute(configPath) ? configPath : join(/*turbopackIgnore: true*/ process.cwd(), configPath);
+}
 
 function mergeConfig(base: unknown, override: unknown): unknown {
   if (!override || typeof override !== "object" || Array.isArray(override)) {
@@ -24,8 +28,9 @@ function mergeConfig(base: unknown, override: unknown): unknown {
 }
 
 export async function loadAppConfig(configPath = defaultConfigPath): Promise<AppConfig> {
+  const filePath = runtimeConfigPath(configPath);
   try {
-    const raw = await readFile(configPath, "utf8");
+    const raw = await readFile(filePath, "utf8");
     const parsed = yaml.load(raw) ?? {};
     return parseAppConfig(parsed);
   } catch (error) {
@@ -37,8 +42,9 @@ export async function loadAppConfig(configPath = defaultConfigPath): Promise<App
 }
 
 export async function saveAppConfig(config: AppConfig, configPath = defaultConfigPath) {
-  await mkdir(dirname(configPath), { recursive: true });
+  const filePath = runtimeConfigPath(configPath);
+  await mkdir(dirname(filePath), { recursive: true });
   const normalized = parseAppConfig(mergeConfig({}, config));
-  await writeFile(configPath, yaml.dump(normalized, { lineWidth: 120 }), "utf8");
+  await writeFile(filePath, yaml.dump(normalized, { lineWidth: 120 }), "utf8");
   return normalized;
 }

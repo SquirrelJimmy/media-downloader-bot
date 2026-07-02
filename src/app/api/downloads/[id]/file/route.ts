@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { basename, extname, isAbsolute, join } from "node:path";
 import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { libsqlClient } from "@/db/client";
@@ -37,6 +37,10 @@ const contentTypes: Record<string, string> = {
 
 function contentTypeFor(filePath: string) {
   return contentTypes[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+function runtimeFilePath(filePath: string) {
+  return isAbsolute(filePath) ? filePath : join(/*turbopackIgnore: true*/ process.cwd(), filePath);
 }
 
 function contentDispositionName(fileName: string) {
@@ -103,7 +107,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "download file not found" }, { status: 404 });
   }
 
-  const info = await stat(savePath).catch(() => null);
+  const filePath = runtimeFilePath(savePath);
+  const info = await stat(filePath).catch(() => null);
   if (!info?.isFile()) {
     return NextResponse.json({ error: "download file not found" }, { status: 404 });
   }
@@ -129,14 +134,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const contentLength = range.end - range.start + 1;
     headers.set("Content-Length", String(contentLength));
     headers.set("Content-Range", `bytes ${range.start}-${range.end}/${info.size}`);
-    return new Response(Readable.toWeb(createReadStream(savePath, range)) as ReadableStream, {
+    return new Response(Readable.toWeb(createReadStream(filePath, range)) as ReadableStream, {
       status: 206,
       headers,
     });
   }
 
   headers.set("Content-Length", String(info.size));
-  return new Response(Readable.toWeb(createReadStream(savePath)) as ReadableStream, {
+  return new Response(Readable.toWeb(createReadStream(filePath)) as ReadableStream, {
     headers,
   });
 }

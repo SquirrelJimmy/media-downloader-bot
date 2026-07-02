@@ -35,7 +35,7 @@ export async function GET() {
     queue,
     error: runtimeError ?? queueError,
     sqliteBusy: Boolean(runtimeError?.includes("SQLITE_BUSY") || (queueError && isSqliteBusyError({ message: queueError }))),
-    userClient: getUserClientStatus(config),
+    userClient: await getUserClientStatus(config),
     botClient: getBotClientStatus(config),
   }, { status: runtimeError || queueError ? 503 : 200 });
 }

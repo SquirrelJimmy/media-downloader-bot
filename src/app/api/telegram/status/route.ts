@@ -6,5 +6,5 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const config = await loadAppConfig();
-  return NextResponse.json(getUserClientStatus(config));
+  return NextResponse.json(await getUserClientStatus(config));
 }

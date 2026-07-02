@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { access, chmod, mkdir, rename, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { finished } from "node:stream/promises";
 
 export interface YtdlpPlatformInfo {
@@ -34,6 +34,10 @@ export function normalizeYtdlpPath(path?: string) {
     return path;
   }
   return path.startsWith("data/") ? `./${path}` : path;
+}
+
+function ytdlpRuntimePath(path: string) {
+  return isAbsolute(path) ? path : join(/*turbopackIgnore: true*/ process.cwd(), path);
 }
 
 export function ytdlpPlatformInfo(
@@ -85,8 +89,9 @@ export async function findExecutableYtdlp(configuredPath?: string): Promise<stri
   const candidates = ytdlpCandidatePaths(configuredPath);
   for (const candidate of candidates) {
     try {
-      await access(candidate, constants.X_OK);
-      return candidate;
+      const executablePath = ytdlpRuntimePath(candidate);
+      await access(executablePath, constants.X_OK);
+      return executablePath;
     } catch {
       // Try the next configured fallback.
     }
@@ -97,6 +102,7 @@ export async function findExecutableYtdlp(configuredPath?: string): Promise<stri
 export async function ytdlpStatus(configuredPath?: string, options: YtdlpStatusOptions = {}) {
   const info = ytdlpPlatformInfo();
   const path = normalizeYtdlpPath(configuredPath) || info.defaultPath;
+  const fileSystemPath = ytdlpRuntimePath(path);
   let exists = false;
   let executable = false;
   let size: number | undefined;
@@ -105,7 +111,7 @@ export async function ytdlpStatus(configuredPath?: string, options: YtdlpStatusO
   let version: string | undefined;
 
   try {
-    const file = await stat(path);
+    const file = await stat(fileSystemPath);
     exists = file.isFile();
     size = file.size;
     mtimeMs = file.mtimeMs;
@@ -115,19 +121,19 @@ export async function ytdlpStatus(configuredPath?: string, options: YtdlpStatusO
   }
 
   try {
-    await access(path, constants.X_OK);
+    await access(fileSystemPath, constants.X_OK);
     executable = true;
   } catch {
     executable = false;
   }
 
   if (executable && options.includeVersion && typeof size === "number" && typeof mtimeMs === "number") {
-    const cached = versionCache.get(path);
+    const cached = versionCache.get(fileSystemPath);
     if (cached && cached.size === size && cached.mtimeMs === mtimeMs) {
       version = cached.version;
     } else {
-      version = await ytdlpVersion(path).catch(() => undefined);
-      versionCache.set(path, { size, mtimeMs, version });
+      version = await ytdlpVersion(fileSystemPath).catch(() => undefined);
+      versionCache.set(fileSystemPath, { size, mtimeMs, version });
     }
   }
 
@@ -148,9 +154,10 @@ export async function downloadYtdlpBinary(input: {
 }) {
   const info = ytdlpPlatformInfo();
   const targetPath = normalizeYtdlpPath(input.targetPath) || info.defaultPath;
+  const fileSystemTargetPath = ytdlpRuntimePath(targetPath);
   const fetchImpl = input.fetchImpl ?? fetch;
-  await mkdir(dirname(targetPath), { recursive: true });
-  const tempPath = `${targetPath}.download`;
+  await mkdir(dirname(fileSystemTargetPath), { recursive: true });
+  const tempPath = `${fileSystemTargetPath}.download`;
 
   const response = await fetchImpl(info.downloadUrl);
   if (!response.ok || !response.body) {
@@ -165,8 +172,8 @@ export async function downloadYtdlpBinary(input: {
     writer.end();
     await finished(writer);
     await chmod(tempPath, 0o755);
-    await rename(tempPath, targetPath);
-    await chmod(targetPath, 0o755);
+    await rename(tempPath, fileSystemTargetPath);
+    await chmod(fileSystemTargetPath, 0o755);
   } catch (error) {
     writer.destroy();
     await rm(tempPath, { force: true }).catch(() => undefined);

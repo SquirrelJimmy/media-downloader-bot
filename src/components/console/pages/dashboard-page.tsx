@@ -88,7 +88,17 @@ export function DashboardPage() {
                   Listen: {status.serverRuntime.listenForwardError}
                 </Typography.Text>
               ) : null}
-              {status?.userClient?.session?.warning ? (
+              {status?.botClient && !status.botClient.configured ? (
+                <Typography.Text type="secondary" className="status-message">
+                  Bot Token 待配置
+                </Typography.Text>
+              ) : null}
+              {status?.userClient && !status.userClient.configured ? (
+                <Typography.Text type="secondary" className="status-message">
+                  Telegram 用户 API 待配置
+                </Typography.Text>
+              ) : null}
+              {status?.userClient?.configured && status.userClient.session?.warning ? (
                 <Typography.Text type="warning" ellipsis className="status-message">
                   Session: {status.userClient.session.warning}
                 </Typography.Text>
