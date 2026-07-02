@@ -1,21 +1,18 @@
 # 媒体下载器
 
-Next.js + TypeScript rewrite scaffold for `telegram_media_downloader`.
+媒体下载器是一个自用的 Telegram 和外部链接媒体下载控制台，基于 Next.js App
+Router、TypeScript 和 Ant Design 构建。系统通过 Bot 转发、Telegram 消息直链
+和控制台手动任务接收下载请求，写入 SQLite 队列后由 worker 自动下载、记录进度
+和保存历史。
 
-This first step initializes the web console and backend foundation described in
-`telegram_media_downloader/docs/12-arch-insights.md` through
-`telegram_media_downloader/docs/15-admin-backend.md`:
+核心能力：
 
-- Next.js App Router
-- Ant Design UI
-- SQLite + Drizzle schema and migration
-- SQLite-backed task queue and worker
-- Download plugin registry
-- Cloud upload adapter boundary
-- API routes for status, downloads, configured chat scans, tasks, config, health, and events
-
-The original Python project remains in `telegram_media_downloader/` as the
-migration reference.
+- Telegram 媒体、文本消息、HTTP 直链和 yt-dlp 外部视频链接下载
+- SQLite + Drizzle 数据库、任务队列、下载记录和进度事件
+- 控制台任务管理、下载明细、插件设置、运行配置和单密码登录鉴权
+- yt-dlp 二进制检测、下载/更新和个性化参数配置
+- rclone 云盘上传、Telegram 转发和运行时服务重启
+- Docker 单容器部署、持久化目录和 GHCR 镜像构建工作流
 
 ## Commands
 
