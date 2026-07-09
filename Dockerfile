@@ -39,7 +39,8 @@ COPY --from=builder /app/.next/standalone/package.json ./package.json
 COPY --from=builder /app/.next/standalone/node_modules ./node_modules
 COPY --from=builder /app/.next/standalone/.next ./.next
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/docker ./docker
+COPY --from=builder /app/docker/entrypoint.sh ./docker/entrypoint.sh
+COPY --from=builder /app/docker/app.yaml.template ./docker/app.yaml.template
 RUN chmod 0755 /app/docker/entrypoint.sh
 
 EXPOSE 3000

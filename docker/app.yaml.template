@@ -67,7 +67,7 @@ plugins:
   ytdlp:
     enabled: true
     priority: 1.5
-    path: __YTDLP_PATH__
+    path: ./data/bin/yt-dlp_linux
     options:
       format: "bestvideo*+bestaudio/best"
       no_playlist: true
@@ -75,7 +75,7 @@ plugins:
       proxy: ""
       cookies: ""
       cookies_from_browser: ""
-      user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+      user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
       referer: ""
       rate_limit: ""
       retries: 0
